@@ -5,34 +5,51 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
+# Setup Chrome options
 options = Options()
 options.add_argument("--start-maximized")
+# options.add_argument("--headless")  # Uncomment to run without opening the browser
 options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument("--disable-infobars")
-options.add_argument("--disable-extensions")
 
+# Start the Chrome browser
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
+# Alibaba RFQ URL
 url = "https://sourcing.alibaba.com/rfq/rfq_search_list.htm?spm=a2700.8073608.1998677541.1.82be65aaoUUItC&country=AE&recently=Y&tracelog=newest"
 driver.get(url)
 time.sleep(5)
 
-for _ in range(5):  
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(4)
+# Wait for RFQ cards to appear
+try:
+    WebDriverWait(driver, 15).until(
+        EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'rfq-card-module__card-box')]"))
+    )
+except:
+    print("⛔ RFQ cards did not load in time.")
+    driver.quit()
+    exit()
 
-cards = driver.find_elements(By.CSS_SELECTOR, "div.rfq-card-module__card-box___qUC3r")
+# Scroll to load more RFQs (you can increase the range for more scrolling)
+for _ in range(5):
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    time.sleep(3)
+
+# Get RFQ cards
+cards = driver.find_elements(By.XPATH, "//div[contains(@class, 'rfq-card-module__card-box')]")
+print(f"✅ Found {len(cards)} RFQ cards")
 
 data = []
 for card in cards:
     try:
-        title = card.find_element(By.CSS_SELECTOR, "div.rfq-card-module__title___2F7sT").text
+        title = card.find_element(By.XPATH, ".//div[contains(@class, 'title')]").text
     except:
         title = ""
 
     try:
-        desc = card.find_element(By.CSS_SELECTOR, "div.rfq-card-module__desc___3Gndy").text
+        desc = card.find_element(By.XPATH, ".//div[contains(@class, 'desc')]").text
     except:
         desc = ""
 
@@ -57,12 +74,14 @@ for card in cards:
         date_posted = ""
 
     try:
-        buyer = card.find_element(By.CSS_SELECTOR, "div.rfq-card-module__buyer-name___F_R8p").text
+        buyer = card.find_element(By.XPATH, ".//div[contains(@class, 'buyer-name')]").text
     except:
         buyer = ""
 
-    email_confirmed = "Yes" if "Email Confirmed" in card.text else "No"
-    typically_replies = "Yes" if "Typically replies" in card.text else "No"
+    # Check badges
+    card_text = card.text.lower()
+    email_confirmed = "Yes" if "email confirmed" in card_text else "No"
+    typically_replies = "Yes" if "typically replies" in card_text else "No"
 
     data.append({
         "Title": title,
@@ -76,11 +95,9 @@ for card in cards:
         "Typically Replies": typically_replies,
     })
 
-
+# Save to CSV
 df = pd.DataFrame(data)
 df.to_csv("rfq_data.csv", index=False, encoding='utf-8-sig')
-print("Scraping complete. Data saved to rfq_data.csv")
 
+print("✅ Scraping complete. Data saved to rfq_data.csv")
 driver.quit()
-
-print(df.head(10))
